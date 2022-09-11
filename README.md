@@ -13,6 +13,10 @@ GAN-Generative Adversarial Network, was praised by "the Father of Convolutional 
 
 [![License](https://img.shields.io/badge/license-Apache%202-red.svg)](LICENSE)![python version](https://img.shields.io/badge/python-3.6+-orange.svg)
 
+## First install Paddle
+
+conda install paddlepaddle-gpu==2.2.2 cudatoolkit=11.2 --channel https://mirrors.sustech.edu.cn/anaconda/cloud/Paddle 
+
 ## 🎪 Hot Activities
 
 - 2021.4.15~4.22

@@ -13,7 +13,10 @@
 #limitations under the License.
 
 import argparse
-
+import pandas as pd
+import os
+import cv2
+import numpy as np
 import paddle
 from ppgan.apps.wav2lip_predictor import Wav2LipPredictor
 
@@ -28,12 +31,10 @@ parser.add_argument('--checkpoint_path',
 parser.add_argument(
     '--audio',
     type=str,
-    help='Filepath of video/audio file to use as raw audio source',
-    required=True)
+    help='Filepath of video/audio file to use as raw audio source')
 parser.add_argument('--face',
                     type=str,
-                    help='Filepath of video/image that contains faces to use',
-                    required=True)
+                    help='Filepath of video/image that contains faces to use')
 parser.add_argument('--outfile',
                     type=str,
                     help='Video path to save result. See default for an e.g.',
@@ -121,7 +122,33 @@ parser.add_argument("--face_enhancement",
                     dest="face_enhancement",
                     action="store_true",
                     help="use face enhance for face")
+
+parser.add_argument("--csv", type=str)
+parser.add_argument("--outroot", type=str)
+parser.add_argument("--start", type=int, default=0)
+parser.add_argument("--end", type=int, default=-1)
+parser.add_argument('--sort_by_duration', action='store_true', help='T')
+parser.add_argument('--video_root', type=str)
+parser.add_argument('--audio_root', type=str)
+
 parser.set_defaults(face_enhancement=False)
+
+def get_frames(file):
+    video_stream = cv2.VideoCapture(file)
+    fps = video_stream.get(cv2.CAP_PROP_FPS)
+    frame_count = int(video_stream.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration = frame_count/fps
+
+    frames = []
+
+    while 1:
+        still_reading, frame = video_stream.read()
+        if not still_reading:
+            video_stream.release()
+            break
+        frames.append(frame)
+
+    return frames
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -141,4 +168,53 @@ if __name__ == "__main__":
                                  nosmooth=args.nosmooth,
                                  face_detector=args.face_detector,
                                  face_enhancement=args.face_enhancement)
-    predictor.run(args.face, args.audio, args.outfile)
+
+    if args.csv:
+        print("Using CSV")
+        videos_file = pd.read_csv(args.csv)
+        if args.sort_by_duration:
+            videos_file = videos_file.sort_values('Duration', ascending=False)
+        start = args.start
+        end = args.end if args.end != -1 else len(videos_file) 
+
+        videoPaths = list(videos_file['Path'])
+        if 'AudioPath' in videos_file.columns:
+            audioPaths = list(videos_file['AudioPath'])
+        else:
+            audioPaths = list(videos_file['Path'])
+        outPaths = [os.path.join(args.outroot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+        os.makedirs(args.outroot, exist_ok=True)
+
+        recon_losses_1 = []
+        recon_losses_2 = []
+
+        for i in range(start, end):
+            print("\n\nPROCESSING VIDEO", i)
+            videoPath, audioPath = videoPaths[i], audioPaths[i]
+            if args.video_root:
+                videoPath = os.path.join(args.video_root, videoPaths[i])
+            if args.audio_root:
+                audioPath = os.path.join(args.audio_root, audioPaths[i])
+
+            predictor.run(videoPaths[i], audioPaths[i], outPaths[i])
+
+            originalFrames = np.array(get_frames(videoPaths[i]))
+            predictedFrames = np.array(get_frames(outPaths[i]))
+
+            print(originalFrames.shape, predictedFrames.shape)
+
+            diff = originalFrames.shape[0] - predictedFrames.shape[0]
+
+            loss1 = np.square(np.subtract(originalFrames[diff:], predictedFrames)).mean()
+            loss2 = np.square(np.subtract(originalFrames[:-diff], predictedFrames)).mean()
+
+            print(loss1, loss2)
+
+            recon_losses_1.append(loss1)
+            recon_losses_2.append(loss2)
+
+    else:
+        predictor.run(args.face, args.audio, args.outfile)
+
+    print("Average MSE Reconstruction loss 1: ", np.mean(recon_losses_1))
+    print("Average MSE Reconstruction loss 2: ", np.mean(recon_losses_2))

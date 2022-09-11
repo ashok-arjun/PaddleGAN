@@ -108,3 +108,10 @@ output_dir/
 
 # macos
 .DS_Store
+
+results
+*.mp4
+temp
+models
+*.zip
+*.sh

@@ -66,6 +66,8 @@ class Wav2LipPredictor(BasePredictor):
 
         batch_size = self.face_det_batch_size
 
+        # print("In face_detect. Images[0]:", images[0].shape)
+
         while 1:
             predictions = []
             try:
@@ -86,22 +88,27 @@ class Wav2LipPredictor(BasePredictor):
 
         results = []
         pady1, pady2, padx1, padx2 = self.pads
+        noFaceFrames = 0
         for rect, image in zip(predictions, images):
             if rect is None:
-                cv2.imwrite(
-                    'temp/faulty_frame.jpg',
-                    image)  # check this frame where the face was not detected.
-                raise ValueError(
-                    'Face not detected! Ensure the video contains a face in all the frames.'
-                )
-
-            y1 = max(0, rect[1] - pady1)
-            y2 = min(image.shape[0], rect[3] + pady2)
-            x1 = max(0, rect[0] - padx1)
-            x2 = min(image.shape[1], rect[2] + padx2)
+                y1, y2 = 0, image.shape[0]
+                x1, x2 = 0, image.shape[1]
+                noFaceFrames += 1
+                # cv2.imwrite(
+                #     'temp/faulty_frame.jpg',
+                #     image)  # check this frame where the face was not detected.
+                # raise ValueError(
+                #     'Face not detected! Ensure the video contains a face in all the frames.'
+                # )
+            else:
+                y1 = max(0, rect[1] - pady1)
+                y2 = min(image.shape[0], rect[3] + pady2)
+                x1 = max(0, rect[0] - padx1)
+                x2 = min(image.shape[1], rect[2] + padx2)
 
             results.append([x1, y1, x2, y2])
 
+        print("# frames with no face:", noFaceFrames)
         boxes = np.array(results)
         if not self.nosmooth: boxes = self.get_smoothened_boxes(boxes, T=5)
         results = [[image[y1:y2, x1:x2], (y1, y2, x1, x2)]
@@ -126,6 +133,7 @@ class Wav2LipPredictor(BasePredictor):
             face_det_results = [[f[y1:y2, x1:x2], (y1, y2, x1, x2)]
                                 for f in frames]
 
+        print("Number of mels:", len(mels))
         for i, m in enumerate(mels):
             idx = 0 if self.static else i % len(frames)
             frame_to_save = frames[idx].copy()
@@ -150,6 +158,9 @@ class Wav2LipPredictor(BasePredictor):
                 mel_batch = np.reshape(
                     mel_batch,
                     [len(mel_batch), mel_batch.shape[1], mel_batch.shape[2], 1])
+
+                # print("Image batch shape: {}. Mel batch shape: {}".\
+                #     format(img_batch.shape, mel_batch.shape))
 
                 yield img_batch, mel_batch, frame_batch, coords_batch
                 img_batch, mel_batch, frame_batch, coords_batch = [], [], [], []
@@ -185,7 +196,7 @@ class Wav2LipPredictor(BasePredictor):
             video_stream = cv2.VideoCapture(face)
             fps = video_stream.get(cv2.CAP_PROP_FPS)
 
-            print('Reading video frames...')
+            print('Reading video frames. FPS is', fps)
 
             full_frames = []
             while 1:
@@ -208,6 +219,8 @@ class Wav2LipPredictor(BasePredictor):
                 frame = frame[y1:y2, x1:x2]
 
                 full_frames.append(frame)
+
+                # print("Frame shape:", frame.shape)
 
         print("Number of frames available for inference: " +
               str(len(full_frames)))
@@ -254,6 +267,8 @@ class Wav2LipPredictor(BasePredictor):
         model.load_dict(weights)
         model.eval()
         print("Model loaded")
+        # import pdb; pdb.set_trace()
+        
         for i, (img_batch, mel_batch, frames, coords) in enumerate(
                 tqdm(gen,
                      total=int(np.ceil(float(len(mel_chunks)) / batch_size)))):
@@ -264,13 +279,20 @@ class Wav2LipPredictor(BasePredictor):
                                       cv2.VideoWriter_fourcc(*'DIVX'), fps,
                                       (frame_w, frame_h))
 
+            # print(i)
             img_batch = paddle.to_tensor(np.transpose(
                 img_batch, (0, 3, 1, 2))).astype('float32')
             mel_batch = paddle.to_tensor(np.transpose(
                 mel_batch, (0, 3, 1, 2))).astype('float32')
 
+            # print("Image batch shape: {}. Mel batch shape: {}".\
+            #     format(img_batch.shape, mel_batch.shape))
+
             with paddle.no_grad():
                 pred = model(mel_batch, img_batch)
+
+            # print("Predictions shape: {}".\
+            #     format(pred.shape))
 
             pred = pred.numpy().transpose(0, 2, 3, 1) * 255.
 
