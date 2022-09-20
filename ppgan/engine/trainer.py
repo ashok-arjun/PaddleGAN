@@ -30,6 +30,7 @@ from ..utils.filesystem import makedirs, save, load
 from ..utils.timer import TimeAverager
 from ..utils.profiler import add_profiler_step
 
+import wandb
 
 class IterLoader:
 
@@ -204,6 +205,9 @@ class Trainer:
         while self.current_iter < (self.total_iters + 1):
             self.current_epoch = iter_loader.epoch
             self.inner_iter = self.current_iter % self.iters_per_epoch
+            wandb.log({"epoch": self.current_epoch, \
+                    "inner_iter": self.inner_iter, \
+                    "current_iter": self.current_iter})
 
             add_profiler_step(self.profiler_options)
 

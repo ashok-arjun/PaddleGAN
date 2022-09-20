@@ -28,6 +28,8 @@ from ..modules.init import init_weights
 
 SYNCNET_WEIGHT_URL = 'https://paddlegan.bj.bcebos.com/models/syncnet.pdparams'
 
+# Custom Code for W&B logging
+import wandb
 
 @MODELS.register()
 class Wav2LipModelHq(BaseModel):
@@ -44,7 +46,9 @@ class Wav2LipModelHq(BaseModel):
                  syncnet_wt=1.0,
                  disc_wt=0.07,
                  max_eval_steps=700,
-                 is_train=True):
+                 is_train=True,
+                 wandb_run_name=None,
+                 wandb_group=None):
         """Initialize the Wav2lip class.
 
         Parameters:
@@ -77,6 +81,8 @@ class Wav2LipModelHq(BaseModel):
 
         if self.is_train:
             self.recon_loss = paddle.nn.L1Loss()
+
+        wandb.init(project="paddleWav2Lip", entity="arjunashok", name=wandb_run_name, group=wandb_group)
 
     def setup_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -151,6 +157,11 @@ class Wav2LipModelHq(BaseModel):
         self.backward_D()
         self.optimizers['optimizer_DH'].step()
 
+        losses = {}
+        for i, (lossKey, lossValue) in enumerate(self.losses.items()):
+            losses["train/"+lossKey] = lossValue.item() if type(lossValue) == paddle.Tensor else lossValue
+        wandb.log(losses)
+
     def test_iter(self, metrics=None):
         self.eval_step += 1
         self.nets['netG'].eval()
@@ -208,5 +219,12 @@ class Wav2LipModelHq(BaseModel):
             self.eval_disc_real_losses, self.eval_disc_fake_losses = [], []
             self.eval_perceptual_losses = []
             self.eval_step = 0
+
+            wandb.log({"eval/averaged_sync_loss": averaged_sync_loss, \
+            "eval/averaged_recon_loss": averaged_recon_loss, \
+            "eval/averaged_perceptual_loss": averaged_perceptual_loss, \
+            "eval/averaged_disc_fake_loss": averaged_disc_fake_loss, \
+            "eval/averaged_disc_real_loss": averaged_disc_real_loss})
+
         self.nets['netG'].train()
         self.nets['netDH'].train()

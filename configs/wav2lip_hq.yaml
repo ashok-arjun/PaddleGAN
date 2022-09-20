@@ -1,6 +1,6 @@
 total_iters: 200000000
-output_dir: output_hq
-checkpoints_dir: checkpoints_hq
+output_dir: output_orig_hq
+checkpoints_dir: checkpoints_orig_hq
 
 model:
   name: Wav2LipModelHq
@@ -13,6 +13,7 @@ model:
     name: SyncNetColor
   discriminator_hq:
     name: Wav2LipDiscQual
+  wandb_group: "ddp-main-bs-8-original"
 
 export_model:
   - {name: 'netG', inputs_num: 2}
@@ -20,21 +21,21 @@ export_model:
 dataset:
   train:
     name: Wav2LipDataset
-    dataroot: data/lrs2_preprocessed
+    dataroot: /mnt/disks/sdc/lrs2-main-preprocessed
     filelists_path: ./
     img_size: 96
     split: train
-    batch_size: 8
-    num_workers: 0
+    batch_size: 32
+    num_workers: 4
     use_shared_memory: False
   test:
     name: Wav2LipDataset
-    dataroot: data/lrs2_preprocessed
+    dataroot: /mnt/disks/sdc/lrs2-main-preprocessed
     filelists_path: ./
     img_size: 96
     split: val
     batch_size: 16
-    num_workers: 0
+    num_workers: 4
     use_shared_memory: False
 
 optimizer:

@@ -15,6 +15,7 @@
 import argparse
 import pandas as pd
 import os
+import time
 import cv2
 import numpy as np
 import paddle
@@ -130,6 +131,7 @@ parser.add_argument("--end", type=int, default=-1)
 parser.add_argument('--sort_by_duration', action='store_true', help='T')
 parser.add_argument('--video_root', type=str)
 parser.add_argument('--audio_root', type=str)
+parser.add_argument('--save_duration_path', type=str)
 
 parser.set_defaults(face_enhancement=False)
 
@@ -187,34 +189,46 @@ if __name__ == "__main__":
 
         recon_losses_1 = []
         recon_losses_2 = []
+        duration = []
 
         for i in range(start, end):
             print("\n\nPROCESSING VIDEO", i)
             videoPath, audioPath = videoPaths[i], audioPaths[i]
+            videoPath = videoPath.replace("/mnt/newdisk/home/arjun.ashok/data/lrs3-HD", "/mnt/disks/sdc/lrs3-HD")
+            print(videoPath)
             if args.video_root:
                 videoPath = os.path.join(args.video_root, videoPaths[i])
             if args.audio_root:
                 audioPath = os.path.join(args.audio_root, audioPaths[i])
 
-            predictor.run(videoPaths[i], audioPaths[i], outPaths[i])
+            start_time = time.time()
+            predictor.run(videoPath, audioPaths[i], outPaths[i])
+            end_time = time.time()
+            duration.append(end_time - start_time)
 
-            originalFrames = np.array(get_frames(videoPaths[i]))
+            originalFrames = np.array(get_frames(videoPath))
             predictedFrames = np.array(get_frames(outPaths[i]))
 
             print(originalFrames.shape, predictedFrames.shape)
 
-            diff = originalFrames.shape[0] - predictedFrames.shape[0]
+            # diff = originalFrames.shape[0] - predictedFrames.shape[0]
 
-            loss1 = np.square(np.subtract(originalFrames[diff:], predictedFrames)).mean()
-            loss2 = np.square(np.subtract(originalFrames[:-diff], predictedFrames)).mean()
+            # loss1 = np.square(np.subtract(originalFrames[diff:], predictedFrames)).mean()
+            # loss2 = np.square(np.subtract(originalFrames[:-diff], predictedFrames)).mean()
 
-            print(loss1, loss2)
+            # print(loss1, loss2)
 
-            recon_losses_1.append(loss1)
-            recon_losses_2.append(loss2)
+            # recon_losses_1.append(loss1)
+            # recon_losses_2.append(loss2)
 
     else:
         predictor.run(args.face, args.audio, args.outfile)
 
-    print("Average MSE Reconstruction loss 1: ", np.mean(recon_losses_1))
-    print("Average MSE Reconstruction loss 2: ", np.mean(recon_losses_2))
+    # print("Average MSE Reconstruction loss 1: ", np.mean(recon_losses_1))
+    # print("Average MSE Reconstruction loss 2: ", np.mean(recon_losses_2))
+
+    if args.save_duration_path:
+        df = pd.DataFrame({"VideoPath":videoPaths[start:end], \
+                        "Duration": videos_file['Duration'][start:end], \
+                        "Inference time": duration})
+        df.to_csv(args.save_duration_path, index=False)
