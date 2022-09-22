@@ -125,6 +125,7 @@ parser.add_argument("--face_enhancement",
                     help="use face enhance for face")
 
 parser.add_argument("--csv", type=str)
+parser.add_argument("--csvroot", type=str)
 parser.add_argument("--outroot", type=str)
 parser.add_argument("--start", type=int, default=0)
 parser.add_argument("--end", type=int, default=-1)
@@ -184,8 +185,18 @@ if __name__ == "__main__":
             audioPaths = list(videos_file['AudioPath'])
         else:
             audioPaths = list(videos_file['Path'])
-        outPaths = [os.path.join(args.outroot, "-".join(path.split("/")[-2:])) for path in videoPaths]
-        os.makedirs(args.outroot, exist_ok=True)
+
+        fullFrameRoot = os.path.join(args.outroot, "fullFrame")
+        faceFrameRoot = os.path.join(args.outroot, "faceFrame")
+        os.makedirs(fullFrameRoot, exist_ok=True)
+        os.makedirs(faceFrameRoot, exist_ok=True)
+
+        outPathsFullFrame = [os.path.join(fullFrameRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+        outPathsFaceFrame = [os.path.join(faceFrameRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+
+        if args.csvroot:
+            videoPaths = [os.path.join(args.csvroot, x) for x in videoPaths]
+            audioPaths = [os.path.join(args.csvroot, x) for x in audioPaths]
 
         recon_losses_1 = []
         recon_losses_2 = []
@@ -202,12 +213,12 @@ if __name__ == "__main__":
                 audioPath = os.path.join(args.audio_root, audioPaths[i])
 
             start_time = time.time()
-            predictor.run(videoPath, audioPaths[i], outPaths[i])
+            predictor.run(videoPath, audioPaths[i], outPathsFullFrame[i], outPathsFaceFrame[i])
             end_time = time.time()
             duration.append(end_time - start_time)
 
             originalFrames = np.array(get_frames(videoPath))
-            predictedFrames = np.array(get_frames(outPaths[i]))
+            predictedFrames = np.array(get_frames(outPathsFullFrame[i]))
 
             print(originalFrames.shape, predictedFrames.shape)
 

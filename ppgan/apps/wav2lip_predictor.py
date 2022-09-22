@@ -5,6 +5,8 @@ import scipy, cv2, os, sys, argparse
 import json, subprocess, random, string
 from tqdm import tqdm
 from glob import glob
+import datetime
+from pytz import timezone
 import paddle
 from paddle.utils.download import get_weights_path_from_url
 from ppgan.faceutils import face_detection
@@ -178,7 +180,11 @@ class Wav2LipPredictor(BasePredictor):
 
             yield img_batch, mel_batch, frame_batch, coords_batch
 
-    def run(self, face, audio_seq, outfile):
+    def run(self, face, audio_seq, outfile, outfileFaceOnly=None):
+        date_time = datetime.datetime.now(timezone("Asia/Kolkata")).strftime("-%d-%m-%Y-%H:%M:%S")
+        temp_dir = path.join('temp', date_time, outfile)
+        makedirs(temp_dir)
+
         if os.path.isfile(face) and path.basename(
                 face).split('.')[1] in ['jpg', 'png', 'jpeg']:
             self.static = True
@@ -228,10 +234,10 @@ class Wav2LipPredictor(BasePredictor):
         if not audio_seq.endswith('.wav'):
             print('Extracting raw audio...')
             command = 'ffmpeg -y -i {} -strict -2 {}'.format(
-                audio_seq, 'temp/temp.wav')
+                audio_seq, path.join(temp_dir, 'temp.wav'))
 
             subprocess.call(command, shell=True)
-            audio_seq = 'temp/temp.wav'
+            audio_seq =  path.join(temp_dir, 'temp.wav')
 
         wav = audio.load_wav(audio_seq, 16000)
         mel = audio.melspectrogram(wav)
@@ -275,10 +281,13 @@ class Wav2LipPredictor(BasePredictor):
             if i == 0:
 
                 frame_h, frame_w = full_frames[0].shape[:-1]
-                out = cv2.VideoWriter('temp/result.avi',
+                out = cv2.VideoWriter(path.join(temp_dir, 'result_fullFrame.avi'),
                                       cv2.VideoWriter_fourcc(*'DIVX'), fps,
                                       (frame_w, frame_h))
-
+                if outfileFaceOnly: out_faceFrame = cv2.VideoWriter(path.join(temp_dir, 'result_faceFrame.avi'),
+                                      cv2.VideoWriter_fourcc(*'DIVX'), fps,
+                                      (96, 96))
+                # break
             # print(i)
             img_batch = paddle.to_tensor(np.transpose(
                 img_batch, (0, 3, 1, 2))).astype('float32')
@@ -300,14 +309,22 @@ class Wav2LipPredictor(BasePredictor):
                 y1, y2, x1, x2 = c
                 if self.face_enhancement:
                     p = self.faceenhancer.enhance_from_image(p)
-                p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
+                p_modified = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
 
-                f[y1:y2, x1:x2] = p
+                f[y1:y2, x1:x2] = p_modified
                 out.write(f)
 
+                if outfileFaceOnly: 
+                    out_faceFrame.write(p.astype(np.uint8))
+
         out.release()
+        if outfileFaceOnly: out_faceFrame.release()
 
         command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(
-            audio_seq, 'temp/result.avi', outfile)
+            audio_seq, path.join(temp_dir, 'result_fullFrame.avi'), outfile)
         subprocess.call(command, shell=platform.system() != 'Windows')
 
+        if outfileFaceOnly: 
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(
+                audio_seq, path.join(temp_dir, 'result_faceFrame.avi'), outfileFaceOnly)
+            subprocess.call(command, shell=platform.system() != 'Windows')

@@ -1,6 +1,6 @@
 total_iters: 200000000
-output_dir: output_orig_hq
-checkpoints_dir: checkpoints_orig_hq
+output_dir: output_orig_hq_lr_0.001
+checkpoints_dir: checkpoints_orig_hq_0.001
 
 model:
   name: Wav2LipModelHq
@@ -61,7 +61,7 @@ validate:
 
 lr_scheduler:
   name: LinearDecay
-  learning_rate: 0.0001
+  learning_rate: 0.001
   start_epoch: 2000000
   decay_epochs: 2000000
   # will get from real dataset
