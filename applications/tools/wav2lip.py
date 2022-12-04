@@ -65,11 +65,11 @@ parser.add_argument(
 parser.add_argument('--face_det_batch_size',
                     type=int,
                     help='Batch size for face detection',
-                    default=16)
+                    default=32)
 parser.add_argument('--wav2lip_batch_size',
                     type=int,
                     help='Batch size for Wav2Lip model(s)',
-                    default=128)
+                    default=32)
 
 parser.add_argument(
     '--resize_factor',
@@ -134,6 +134,14 @@ parser.add_argument('--video_root', type=str)
 parser.add_argument('--audio_root', type=str)
 parser.add_argument('--save_duration_path', type=str)
 
+# Specific dubbing args
+# parser.add_argument('--outfile', type=str) # this is already defined
+parser.add_argument("--outfileFaceOnly", type=str)
+parser.add_argument('--copyfile', type=str)
+parser.add_argument("--copyfileFaceOnly", type=str)
+parser.add_argument('--mergeFace', type=str)
+parser.add_argument("--mergeFullFrame", type=str)
+
 parser.set_defaults(face_enhancement=False)
 
 def get_frames(file):
@@ -180,19 +188,42 @@ if __name__ == "__main__":
         start = args.start
         end = args.end if args.end != -1 else len(videos_file) 
 
-        videoPaths = list(videos_file['Path'])
-        if 'AudioPath' in videos_file.columns:
-            audioPaths = list(videos_file['AudioPath'])
+        if 'Path' in videos_file.columns:
+            videoPaths = list(videos_file['Path'])
+            if 'AudioPath' in videos_file.columns:
+                audioPaths = list(videos_file['AudioPath'])
+            else:
+                audioPaths = list(videos_file['Path'])
+        elif 'Audio Source' in videos_file.columns and 'Video Source' in videos_file.columns:
+            videoPaths = list(videos_file['Video Source'])
+            audioPaths = list(videos_file['Audio Source'])
         else:
-            audioPaths = list(videos_file['Path'])
-
+            videoPaths = audioPaths = None
+            raise Exception()
+            
         fullFrameRoot = os.path.join(args.outroot, "fullFrame")
         faceFrameRoot = os.path.join(args.outroot, "faceFrame")
         os.makedirs(fullFrameRoot, exist_ok=True)
         os.makedirs(faceFrameRoot, exist_ok=True)
 
+        fullFrameOrigRoot = os.path.join(args.outroot, "fullFrame-orig")
+        faceFrameOrigRoot = os.path.join(args.outroot, "faceFrame-orig")
+        os.makedirs(fullFrameOrigRoot, exist_ok=True)
+        os.makedirs(faceFrameOrigRoot, exist_ok=True)
+
+        fullFrameMergedRoot = os.path.join(args.outroot, "fullFrame-merged")
+        faceFrameMergedRoot = os.path.join(args.outroot, "faceFrame-merged")
+        os.makedirs(fullFrameMergedRoot, exist_ok=True)
+        os.makedirs(faceFrameMergedRoot, exist_ok=True)
+
         outPathsFullFrame = [os.path.join(fullFrameRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
         outPathsFaceFrame = [os.path.join(faceFrameRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+
+        outPathsOrigFullFrame = [os.path.join(fullFrameOrigRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+        outPathsOrigFaceFrame = [os.path.join(faceFrameOrigRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+
+        outPathsMergedFace = [os.path.join(faceFrameMergedRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
+        outPathsMergedFullFrame = [os.path.join(fullFrameMergedRoot, "-".join(path.split("/")[-2:])) for path in videoPaths]
 
         if args.csvroot:
             videoPaths = [os.path.join(args.csvroot, x) for x in videoPaths]
@@ -213,33 +244,19 @@ if __name__ == "__main__":
                 audioPath = os.path.join(args.audio_root, audioPaths[i])
 
             start_time = time.time()
-            predictor.run(videoPath, audioPaths[i], outPathsFullFrame[i], outPathsFaceFrame[i])
+            predictor.run(videoPath, audioPaths[i], outPathsFullFrame[i], outPathsOrigFullFrame[i], \
+                        outPathsFaceFrame[i], outPathsOrigFaceFrame[i], outPathsMergedFace[i], outPathsMergedFullFrame[i])
             end_time = time.time()
             duration.append(end_time - start_time)
 
             originalFrames = np.array(get_frames(videoPath))
             predictedFrames = np.array(get_frames(outPathsFullFrame[i]))
 
-            print(originalFrames.shape, predictedFrames.shape)
-
-            # diff = originalFrames.shape[0] - predictedFrames.shape[0]
-
-            # loss1 = np.square(np.subtract(originalFrames[diff:], predictedFrames)).mean()
-            # loss2 = np.square(np.subtract(originalFrames[:-diff], predictedFrames)).mean()
-
-            # print(loss1, loss2)
-
-            # recon_losses_1.append(loss1)
-            # recon_losses_2.append(loss2)
+        if args.save_duration_path:
+            df = pd.DataFrame({"VideoPath":videoPaths[start:end], \
+                            "Duration": videos_file['Duration'][start:end], \
+                            "Inference time": duration})
+            df.to_csv(args.save_duration_path, index=False)
 
     else:
         predictor.run(args.face, args.audio, args.outfile)
-
-    # print("Average MSE Reconstruction loss 1: ", np.mean(recon_losses_1))
-    # print("Average MSE Reconstruction loss 2: ", np.mean(recon_losses_2))
-
-    if args.save_duration_path:
-        df = pd.DataFrame({"VideoPath":videoPaths[start:end], \
-                        "Duration": videos_file['Duration'][start:end], \
-                        "Inference time": duration})
-        df.to_csv(args.save_duration_path, index=False)

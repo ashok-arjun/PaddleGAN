@@ -180,7 +180,7 @@ class Wav2LipPredictor(BasePredictor):
 
             yield img_batch, mel_batch, frame_batch, coords_batch
 
-    def run(self, face, audio_seq, outfile, outfileFaceOnly=None):
+    def run(self, face, audio_seq, outfile, copyfile=None,  outfileFaceOnly=None, copyfileFaceOnly=None, mergeFace=None, mergeFullFrame=None):
         date_time = datetime.datetime.now(timezone("Asia/Kolkata")).strftime("-%d-%m-%Y-%H:%M:%S")
         temp_dir = path.join('temp', date_time, outfile)
         makedirs(temp_dir)
@@ -275,20 +275,37 @@ class Wav2LipPredictor(BasePredictor):
         print("Model loaded")
         # import pdb; pdb.set_trace()
         
+        out = outOrig = out_faceFrame = outOrig_faceFrame = merged_faceFrames = merged_fullFrames = None
+
         for i, (img_batch, mel_batch, frames, coords) in enumerate(
                 tqdm(gen,
                      total=int(np.ceil(float(len(mel_chunks)) / batch_size)))):
             if i == 0:
-
                 frame_h, frame_w = full_frames[0].shape[:-1]
+
+                # Full Frame types
                 out = cv2.VideoWriter(path.join(temp_dir, 'result_fullFrame.avi'),
                                       cv2.VideoWriter_fourcc(*'DIVX'), fps,
                                       (frame_w, frame_h))
+                if copyfile: outOrig = cv2.VideoWriter(path.join(temp_dir, 'orig_fullFrame.avi'),
+                                                        cv2.VideoWriter_fourcc(*'DIVX'), fps,
+                                                        (frame_w, frame_h))
+                
+                # Face Only Types            
                 if outfileFaceOnly: out_faceFrame = cv2.VideoWriter(path.join(temp_dir, 'result_faceFrame.avi'),
                                       cv2.VideoWriter_fourcc(*'DIVX'), fps,
-                                      (96, 96))
-                # break
-            # print(i)
+                                      (self.img_size, self.img_size))
+                if copyfileFaceOnly: outOrig_faceFrame = cv2.VideoWriter(path.join(temp_dir, 'orig_faceFrame.avi'),
+                                      cv2.VideoWriter_fourcc(*'DIVX'), fps,
+                                      (self.img_size, self.img_size))
+
+    			# Merged Types
+                if mergeFace: merged_faceFrames = cv2.VideoWriter(path.join(temp_dir, 'merged_faceFrames.avi'),
+                                                            cv2.VideoWriter_fourcc(*'DIVX'), fps,
+                                                            (self.img_size*2, self.img_size))
+                if mergeFullFrame:	merged_fullFrames = cv2.VideoWriter(path.join(temp_dir, 'merged_fullFrames.avi'),
+                                                            cv2.VideoWriter_fourcc(*'DIVX'), fps,
+                                                            (frame_w*2, frame_h))
             img_batch = paddle.to_tensor(np.transpose(
                 img_batch, (0, 3, 1, 2))).astype('float32')
             mel_batch = paddle.to_tensor(np.transpose(
@@ -307,24 +324,56 @@ class Wav2LipPredictor(BasePredictor):
 
             for p, f, c in zip(pred, frames, coords):
                 y1, y2, x1, x2 = c
+                replacedFrame = f.copy()
                 if self.face_enhancement:
                     p = self.faceenhancer.enhance_from_image(p)
-                p_modified = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
-
-                f[y1:y2, x1:x2] = p_modified
-                out.write(f)
-
-                if outfileFaceOnly: 
-                    out_faceFrame.write(p.astype(np.uint8))
-
+                pred_resized = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
+                replacedFrame[y1:y2, x1:x2] = pred_resized
+                out.write(replacedFrame)
+                if copyfile: outOrig.write(f)
+                if outfileFaceOnly: out_faceFrame.write(p.astype(np.uint8))
+                if copyfileFaceOnly: 
+                    orig_face_resized = cv2.resize(f[y1:y2, x1:x2].astype(np.uint8), (self.img_size, self.img_size))
+                    outOrig_faceFrame.write(orig_face_resized)
+                if mergeFace:
+                    orig_face_resized = cv2.resize(f[y1:y2, x1:x2].astype(np.uint8), (self.img_size, self.img_size))
+                    orig_pred_faceFrames = np.hstack((orig_face_resized.astype(np.uint8).copy(), p.astype(np.uint8).copy()))
+                    merged_faceFrames.write(orig_pred_faceFrames)
+                if mergeFullFrame:
+                    orig_pred_fullFrames = np.hstack((f, replacedFrame))
+                    merged_fullFrames.write(orig_pred_fullFrames)
+                    
         out.release()
-        if outfileFaceOnly: out_faceFrame.release()
-
         command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(
             audio_seq, path.join(temp_dir, 'result_fullFrame.avi'), outfile)
         subprocess.call(command, shell=platform.system() != 'Windows')
 
         if outfileFaceOnly: 
-            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {}'.format(
-                audio_seq, path.join(temp_dir, 'result_faceFrame.avi'), outfileFaceOnly)
+            out_faceFrame.release()
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {} -loglevel error'.format(
+                    audio_seq, path.join(temp_dir, 'result_faceFrame.avi'), outfileFaceOnly)
+            subprocess.call(command, shell=platform.system() != 'Windows')
+
+        if copyfile: 
+            outOrig.release()
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {} -loglevel error'.format(
+                    audio_seq, path.join(temp_dir, 'orig_fullFrame.avi'), copyfile)
+            subprocess.call(command, shell=platform.system() != 'Windows')
+
+        if copyfileFaceOnly: 
+            outOrig_faceFrame.release()
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {} -loglevel error'.format(
+                    audio_seq, path.join(temp_dir, 'orig_faceFrame.avi'), copyfileFaceOnly)
+            subprocess.call(command, shell=platform.system() != 'Windows')
+
+        if mergeFace:
+            merged_faceFrames.release()
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {} -loglevel error'.format(
+                    audio_seq, path.join(temp_dir, 'merged_faceFrames.avi'), mergeFace)
+            subprocess.call(command, shell=platform.system() != 'Windows')
+
+        if mergeFullFrame:
+            merged_fullFrames.release()
+            command = 'ffmpeg -y -i {} -i {} -strict -2 -q:v 1 {} -loglevel error'.format(
+                    audio_seq, path.join(temp_dir, 'merged_fullFrames.avi'), mergeFullFrame)
             subprocess.call(command, shell=platform.system() != 'Windows')
