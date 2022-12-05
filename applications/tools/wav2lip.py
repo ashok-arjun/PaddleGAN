@@ -198,6 +198,7 @@ if __name__ == "__main__":
             videoPaths = list(videos_file['Video Source'])
             audioPaths = list(videos_file['Audio Source'])
         else:
+            print(videos_file.columns)
             videoPaths = audioPaths = None
             raise Exception()
 
