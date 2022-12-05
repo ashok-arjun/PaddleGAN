@@ -200,7 +200,15 @@ if __name__ == "__main__":
         else:
             videoPaths = audioPaths = None
             raise Exception()
-            
+
+        # for i in range(len(videoPaths)):
+        #     if not videoPaths[i].endswith(".mp4"):
+        #         videoPaths[i] = videoPaths[i] + ".mp4"
+
+        #     if not audioPaths[i].endswith(".mp4") or not audioPaths[i].endswith(".wav") \
+        #         or not audioPaths[i].endswith(".mp3"):
+        #         audioPaths[i] = audioPaths[i] + ".mp4"
+
         fullFrameRoot = os.path.join(args.outroot, "fullFrame")
         faceFrameRoot = os.path.join(args.outroot, "faceFrame")
         os.makedirs(fullFrameRoot, exist_ok=True)
@@ -237,14 +245,14 @@ if __name__ == "__main__":
             print("\n\nPROCESSING VIDEO", i)
             videoPath, audioPath = videoPaths[i], audioPaths[i]
             videoPath = videoPath.replace("/mnt/newdisk/home/arjun.ashok/data/lrs3-HD", "/mnt/disks/sdc/lrs3-HD")
-            print(videoPath)
+            print(videoPath, audioPath)
             if args.video_root:
                 videoPath = os.path.join(args.video_root, videoPaths[i])
             if args.audio_root:
                 audioPath = os.path.join(args.audio_root, audioPaths[i])
 
             start_time = time.time()
-            predictor.run(videoPath, audioPaths[i], outPathsFullFrame[i], outPathsOrigFullFrame[i], \
+            predictor.run(videoPath, audioPath, outPathsFullFrame[i], outPathsOrigFullFrame[i], \
                         outPathsFaceFrame[i], outPathsOrigFaceFrame[i], outPathsMergedFace[i], outPathsMergedFullFrame[i])
             end_time = time.time()
             duration.append(end_time - start_time)

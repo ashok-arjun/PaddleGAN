@@ -183,7 +183,7 @@ class Wav2LipPredictor(BasePredictor):
     def run(self, face, audio_seq, outfile, copyfile=None,  outfileFaceOnly=None, copyfileFaceOnly=None, mergeFace=None, mergeFullFrame=None):
         date_time = datetime.datetime.now(timezone("Asia/Kolkata")).strftime("-%d-%m-%Y-%H:%M:%S")
         temp_dir = path.join('temp', date_time, outfile)
-        makedirs(temp_dir)
+        makedirs(temp_dir, exist_ok=True)
 
         if os.path.isfile(face) and path.basename(
                 face).split('.')[1] in ['jpg', 'png', 'jpeg']:
